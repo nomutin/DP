@@ -47,7 +47,7 @@ class DiffusionPolicy(nn.Module):
     noise_scheduler: DDPMScheduler
         The noise scheduler for the diffusion model.
     unet: nn.Module
-        Network for conditioning.
+        Network for state conditioning.
 
     (legend: o = state_seq_len, h = action_generate_len, a = action_seq_len)
     ----------------------------------------------------------------------------------------------
