@@ -246,7 +246,7 @@ class ConditionalUnet1d(nn.Module):
             "kernel_size": config.kernel_size,
             "n_groups": config.n_groups,
         }
-        self.down_modules = []
+        self.down_modules = nn.ModuleList()
         for ind, (dim_in, dim_out) in enumerate(in_out):
             is_last = ind >= (len(in_out) - 1)
             self.down_modules.append(
@@ -269,7 +269,7 @@ class ConditionalUnet1d(nn.Module):
         )
 
         # Unet decoder.
-        self.up_modules = []
+        self.up_modules = nn.ModuleList()
         for ind, (dim_out, dim_in) in enumerate(reversed(in_out[1:])):
             is_last = ind >= (len(in_out) - 1)
             self.up_modules.append(

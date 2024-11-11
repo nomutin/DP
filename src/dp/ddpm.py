@@ -31,7 +31,7 @@ class NoiseSchedulerConfig:
     """
 
     num_train_timesteps: int = 100
-    num_inference_steps: int | None = None
+    num_inference_steps: int = 100
     beta_schedule: str = "squaredcos_cap_v2"
     beta_start: float = 0.0001
     beta_end: float = 0.02

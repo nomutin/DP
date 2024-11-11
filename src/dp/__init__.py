@@ -4,3 +4,7 @@ Diffusion Policy as per "Diffusion Policy: Visuomotor Policy Learning via Action
 
 Modified from https://github.com/huggingface/lerobot/blob/main/lerobot/common/policies/diffusion/modeling_diffusion.py
 """
+
+from dp.core import DiffusionPolicy
+
+__all__ = ["DiffusionPolicy"]

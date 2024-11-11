@@ -20,6 +20,11 @@ dev = [
     "pytest-cov>=5.0.0",
     "ruff>=0.7.1",
 ]
+train = [
+    "lightning[extra]>=2.4.0",
+    "torchgeometry>=0.1.2",
+    "wandb>=0.18.5",
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -39,7 +44,7 @@ target-version = "py310"
 [tool.ruff.lint]
 preview = true
 select = ["ALL"]
-ignore = []
+ignore = ["CPY001",]
 fixable = ["ALL"]
 unfixable = []
 exclude = [".git", ".ruff_cache", ".venv",]
@@ -50,6 +55,7 @@ preview = true
 
 [tool.ruff.lint.per-file-ignores]
 "src/dp/core.py" = ["PLR0913"]
+"example/*" = ["DOC201"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "numpy"

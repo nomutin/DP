@@ -46,7 +46,7 @@ class DiffusionPolicy(nn.Module):
         [B, *] -> [B, condition_dim]
     noise_scheduler: DDPMScheduler
         The noise scheduler for the diffusion model.
-    unet: nn.Module
+    add_condition_to_action: nn.Module
         Network for state conditioning.
 
     (legend: o = state_seq_len, h = action_generate_len, a = action_seq_len)
@@ -70,7 +70,7 @@ class DiffusionPolicy(nn.Module):
         num_inference_steps: int,
         state_to_condition: nn.Module,
         noise_scheduler: DDPMScheduler,
-        unet: nn.Module,
+        add_condition_to_action: nn.Module,
     ) -> None:
         super().__init__()
         self.states_seq_len = states_seq_len
@@ -82,11 +82,11 @@ class DiffusionPolicy(nn.Module):
         self.num_inference_steps = num_inference_steps
 
         self.state_to_condition = state_to_condition
-        self.unet = unet
+        self.add_condition_to_action = add_condition_to_action
         self.noise_scheduler = noise_scheduler
 
-        self.action_queue: deque[Tensor] = deque(maxlen=self.config.n_action_steps)
-        self.state_queue: deque[Tensor] = deque(maxlen=self.config.n_obs_steps)
+        self.action_queue: deque[Tensor] = deque(maxlen=action_seq_len)
+        self.state_queue: deque[Tensor] = deque(maxlen=states_seq_len)
 
     def reset(self) -> None:
         """Clear state and action queues."""
@@ -101,7 +101,7 @@ class DiffusionPolicy(nn.Module):
         Parameters
         ----------
         states: Tensor
-            The states tensor. Shape: [B, states_seq_len, state_dim]
+            The states tensor. Shape: [B, state_dim]
 
         Returns
         -------
@@ -110,6 +110,7 @@ class DiffusionPolicy(nn.Module):
         """
         # Note: It's important that this happens after stacking the images into a single key.
         self.state_queue = populate_queues(self.state_queue, states)
+        states = torch.stack(list(self.state_queue), dim=1)
         if len(self.action_queue) == 0:
             actions = self.generate_actions(states=states)
             self.action_queue.extend(actions.transpose(0, 1))
@@ -142,7 +143,7 @@ class DiffusionPolicy(nn.Module):
         for t in self.noise_scheduler.timesteps:
             # Predict model output.
             timestep = torch.full(sample.shape[:1], t.item(), dtype=torch.long, device=sample.device)
-            model_output = self.unet.forward(sample, timestep=timestep, condition=condition)
+            model_output = self.add_condition_to_action.forward(sample, timestep=timestep, condition=condition)
             # Compute previous image: x_t -> x_t-1
             step_output = self.noise_scheduler.step(model_output, timestep=int(t.item()), sample=sample)
             if isinstance(step_output, tuple):
@@ -189,7 +190,7 @@ class DiffusionPolicy(nn.Module):
         end = start + self.action_seq_len
         return actions[:, start:end]
 
-    def forward(self, states: Tensor, actions: Tensor) -> dict[str, Tensor]:
+    def forward(self, states: Tensor, actions: Tensor) -> Tensor:
         """
         Compute the loss for the given batch of observations and actions.
 
@@ -223,18 +224,20 @@ class DiffusionPolicy(nn.Module):
         # Sample noise to add to the trajectory.
         eps = torch.randn(actions.shape, device=actions.device)
         # Sample a random noising timestep for each item in the batch.
-        timesteps = IntTensor(
-            torch.randint(low=0, high=self.num_train_timesteps, size=(actions.shape[0],), device=actions.device).long(),
-        )
+        timesteps = torch.randint(
+            low=0,
+            high=self.num_train_timesteps,
+            size=(actions.shape[0],),
+            device=actions.device,
+        ).long()
         # Add noise to the clean trajectories according to the noise magnitude at each timestep.
         noisy_trajectory = self.noise_scheduler.add_noise(actions, eps, timesteps)
 
         # Run the denoising network (that might denoise the trajectory, or attempt to predict the noise).
-        pred = self.unet.forward(noisy_trajectory, timestep=timesteps, condition=condition)
+        pred = self.add_condition_to_action.forward(noisy_trajectory, timestep=timesteps, condition=condition)
 
         # Compute the loss.
-        loss = tf.mse_loss(pred, eps, reduction="none").mean()
-        return {"loss": loss}
+        return tf.mse_loss(pred, eps, reduction="none").mean()
 
 
 def populate_queues(queue: deque[Tensor], tensor: Tensor) -> deque[Tensor]:
