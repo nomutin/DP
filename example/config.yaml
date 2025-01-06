@@ -4,15 +4,15 @@ seed_everything: 42
 model:
   class_path: model.LitDP
   init_args:
-    states_seq_len: 4
+    states_seq_len: 2
     action_generate_len: 16
     action_seq_len: 4
     unet_config:
-      condition_dim: 50
-      action_dim: 2
-      kernel_size: 3
+      condition_dim: 128
+      action_dim: 6
+      kernel_size: 5
       n_groups: 8
-      down_dims: [32, 64, 128]
+      down_dims: [128, 256, 512]
       diffusion_step_embed_dim: 128
     noise_scheduler_config:
       num_train_timesteps: 100
@@ -27,7 +27,7 @@ model:
 optimizer:
   class_path: torch.optim.AdamW
   init_args:
-    lr: 0.001
+    lr: 0.0001
 
 trainer:
   accelerator: gpu
@@ -49,12 +49,70 @@ trainer:
         patience: 200
         mode: min
         verbose: True
+    -
+      class_path: model.LogDPPrediction
+      init_args:
+        every_n_epochs: 100
+        num_samples: 4
 
 data:
-  class_path: dataset.CircleDataModule
+  class_path: dataset.EpisodeDataModule
   init_args:
-    train_size: 16
-    val_size: 4
-    num_points: 50
-    batch_size: 8
-    window_size: 16
+    config:
+      data_name: rope_koch_fixed
+      processed_data_name: rope_koch_fixed_processed
+      batch_size: 8
+      num_workers: 4
+      gdrive_id: 19ljanSD5ViCpxOgSdtQydAdEg908-WEs
+      train_ratio: 0.8
+      data_defs:
+
+        - prefix: observation*
+          preprocess:
+            class_path: dataset.Compose
+            init_args:
+              transforms:
+                - class_path: einops.layers.torch.Rearrange
+                  init_args:
+                    pattern: B H W C -> B C H W
+                - class_path: torchvision.transforms.Normalize
+                  init_args:
+                    mean: 0.0
+                    std: 255.0
+                - class_path: torchvision.transforms.Resize
+                  init_args:
+                    size: [144, 192]
+                - class_path: dataset.ObservationEncoder
+                  init_args:
+                    model_name: Cosmos-Tokenizer-CI16x16
+          train_transform:
+            class_path: dataset.RandomWindow
+            init_args:
+              window_size: 16
+          val_transform:
+            class_path: dataset.RandomWindow
+            init_args:
+              window_size: 16
+          test_transform:
+            class_path: dataset.RandomWindow
+            init_args:
+              window_size: 64
+
+        - prefix: action*
+          preprocess:
+            class_path: dataset.NormalizeAction
+            init_args:
+              max_array: [3051, 2938, 3009, 3978, 4091, 2127]
+              min_array: [993, 1588, 1192, 1833, 3, 2078]
+          train_transform:
+            class_path: dataset.RandomWindow
+            init_args:
+              window_size: 16
+          val_transform:
+            class_path: dataset.RandomWindow
+            init_args:
+              window_size: 16
+          test_transform:
+            class_path: dataset.RandomWindow
+            init_args:
+              window_size: 64

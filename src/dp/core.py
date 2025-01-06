@@ -5,12 +5,10 @@ Diffusion Policy as per "Diffusion Policy: Visuomotor Policy Learning via Action
 Modified from https://github.com/huggingface/lerobot/blob/main/lerobot/common/policies/diffusion/modeling_diffusion.py
 """
 
-from collections import deque
-
 import torch
 import torch.nn.functional as tf
 from diffusers.schedulers.scheduling_ddpm import DDPMScheduler
-from torch import IntTensor, Tensor, nn
+from torch import Tensor, nn
 
 __all__ = ["DiffusionPolicy"]
 
@@ -85,37 +83,6 @@ class DiffusionPolicy(nn.Module):
         self.add_condition_to_action = add_condition_to_action
         self.noise_scheduler = noise_scheduler
 
-        self.action_queue: deque[Tensor] = deque(maxlen=action_seq_len)
-        self.state_queue: deque[Tensor] = deque(maxlen=states_seq_len)
-
-    def reset(self) -> None:
-        """Clear state and action queues."""
-        self.action_queue = deque(maxlen=self.action_seq_len)
-        self.state_queue = deque(maxlen=self.states_seq_len)
-
-    @torch.no_grad()
-    def select_action(self, states: Tensor) -> Tensor:
-        """
-        Select a single action given environment observations.
-
-        Parameters
-        ----------
-        states: Tensor
-            The states tensor. Shape: [B, state_dim]
-
-        Returns
-        -------
-        Tensor
-            The predicted action sequence. Shape: [B, action_seq_len, action_dim]
-        """
-        # Note: It's important that this happens after stacking the images into a single key.
-        self.state_queue = populate_queues(self.state_queue, states)
-        states = torch.stack(list(self.state_queue), dim=1)
-        if len(self.action_queue) == 0:
-            actions = self.generate_actions(states=states)
-            self.action_queue.extend(actions.transpose(0, 1))
-        return self.action_queue.popleft()
-
     def conditional_sample(self, batch_size: int, condition: Tensor) -> Tensor:
         """
         Sample from the diffusion model.
@@ -138,11 +105,11 @@ class DiffusionPolicy(nn.Module):
             If the output of `self.noise_scheduler.step` is not a `torch.Tensor`.
         """
         # Sample prior.
-        sample = torch.randn((batch_size, self.action_generate_len, self.action_dim))
+        sample = torch.randn((batch_size, self.action_generate_len, self.action_dim), device=condition.device)
         self.noise_scheduler.set_timesteps(self.num_inference_steps)
         for t in self.noise_scheduler.timesteps:
             # Predict model output.
-            timestep = torch.full(sample.shape[:1], t.item(), dtype=torch.long, device=sample.device)
+            timestep = torch.full(sample.shape[:1], t.item(), dtype=torch.long, device=condition.device)
             model_output = self.add_condition_to_action.forward(sample, timestep=timestep, condition=condition)
             # Compute previous image: x_t -> x_t-1
             step_output = self.noise_scheduler.step(model_output, timestep=int(t.item()), sample=sample)
@@ -153,6 +120,7 @@ class DiffusionPolicy(nn.Module):
 
         return sample
 
+    @torch.no_grad()
     def generate_actions(self, states: Tensor) -> Tensor:
         """
         Generate actions given environment states.
@@ -237,30 +205,4 @@ class DiffusionPolicy(nn.Module):
         pred = self.add_condition_to_action.forward(noisy_trajectory, timestep=timesteps, condition=condition)
 
         # Compute the loss.
-        return tf.mse_loss(pred, eps, reduction="none").mean()
-
-
-def populate_queues(queue: deque[Tensor], tensor: Tensor) -> deque[Tensor]:
-    """
-    Populate a queue with a tensor.
-
-    Parameters
-    ----------
-    queue: deque[Tensor]
-        The queue to populate.
-    tensor: Tensor
-        The tensor to add to the queue.
-
-    Returns
-    -------
-    deque[Tensor]
-        The populated queue.
-    """
-    if len(queue) != queue.maxlen:
-        # initialize by copying the first observation several times until the queue is full
-        while len(queue) != queue.maxlen:
-            queue.append(tensor)
-    else:
-        # add latest observation to the queue
-        queue.append(tensor)
-    return queue
+        return tf.mse_loss(pred, eps)

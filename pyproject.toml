@@ -1,6 +1,6 @@
 [project]
 name = "dp"
-version = "0.0.1"
+version = "0.0.2"
 description = "Minimal implementation of Diffusion Policy"
 readme = "README.md"
 authors = [
@@ -23,7 +23,9 @@ dev = [
 train = [
     "lightning[extra]>=2.4.0",
     "torchgeometry>=0.1.2",
+    "torchvision>=0.20.0",
     "wandb>=0.18.5",
+    "wget>=3.2",
 ]
 
 [build-system]
